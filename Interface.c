@@ -4,7 +4,7 @@
  * @author   Kukushkin A.V.
  * @brief    This code is designed to work with various kinds of interfaces. It is a parent class
  * @version  V1.6.1
- * @date     09 Oct. 2024.
+ * @date     01 Nov. 2024.
  *************************************************************************
  */
  
