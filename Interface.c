@@ -3,390 +3,540 @@
  * @file     Interface.c
  * @author   Kukushkin A.V.
  * @brief    This code is designed to work with various kinds of interfaces. It is a parent class
- * @version  V1.6.1
- * @date     01 Nov. 2024.
+ * @version  V1.6.4
+ * @date     17 Jan. 2025.
  *************************************************************************
  */
- 
-#define INTERFACE_PROTOCOL_TIME_SEPARATION
-#define INTERFACE_PROTOCOL_BYTESTAFF
+/*
+   @verbatim
+  ==============================================================================
+                        ##### How to use this class #####
+  ==============================================================================
 
-#include "Interface.h"
-#include "InterfacePrivate.h"
-#include "CmdCircBuff/CmdCircBuff.h"
-#ifdef INTERFACE_PROTOCOL_BYTESTAFF
-  #include "ByteStaff/ByteStaff.h"
-#endif
+
+*/
+
 #include <string.h>
 #include <stdlib.h>
-#include "Hex2ASCii/Hex2ASCII.h"
+
+#include "../Interface/Interface.h"
+#include "../Interface/InterfacePrivate.h"
+#include "../Interface/InterfacePrivateWrapper.h"
+#include "../Interface/CircBuff/CircBuff.h"
+#include "../Memory/Heap/my_heap.h"
 
 
 
-#ifdef ADDR_IN_PACK
-//  #define ADDR_MULTICAST_SUPPORT
-  #ifdef ADDR_MULTICAST_SUPPORT
-    #define MULTICAST_ADDR 0
-  #endif
-#endif
 
-#define RX_BUFFER_LEN 255
-#define TX_BUFFER_LEN 255
 
-#define PACK_BUFFER_LEN 256
 
-#define SMO_CIRC_RX_DEEP 5
-#define SMO_CIRC_TX_DEEP 5
 
-#define INTERFACE_CMD_BYTE      0
-#define INTERFACE_ADDR_BYTE     0
+/**
+ * @addtogroup Interface
+ * @{
+ */
 
-static void SetRxBuff(void* this_ptr,uint8_t* data,size_t max_len);
-static void SetTxBuff(void* this_ptr,uint8_t* data,size_t max_len);
-static void HwProcess(void* this_ptr);
-static bool SendData(void* this_ptr,uint8_t* data,uint8_t len);
-static bool IsHwFree(void* this_ptr);
-static bool Connect(void* this_ptr);
-static bool Interface_ChkCrc(InterfaceHandel_t *phdev,uint8_t* pack,uint32_t len);
-static void Interface_InsertCrc(InterfaceHandel_t *phdev,InterfaceCmdData_t* message);
+#define INTERFACE_CAST(cthis) ((InterfaceHandel_t*)cthis)
 
-static uint32_t Interface_TimeProtocol(uint8_t * dst,const uint8_t* src,const uint32_t len){memcpy(dst,src,len); return len;};
+/* Private function prototypes -----------------------------------------------*/
+/** @defgroup Interfafce_Private_Functions Interfafce Private Functions
+  * @{
+  */
+  static bool   _this_CRCcheck(const InterfaceHandel_t* cthis,const uint8_t* pack,const uint32_t len);
+  static void   _this_InsertCRC(const InterfaceHandel_t* cthis,uint8_t* src,size_t* len);
+  static size_t _this_TimeProtocol(uint8_t * dst,const uint8_t* src,size_t len){memcpy(dst,src,len); return len;};
+  
+  static void   _this_rx_irq(void* cthis,uint8_t* src,size_t len);
+  static void   _this_tx_irq(void* this_ptr);
+  static void   _this_err_irq(void* this_ptr){(void)this_ptr;};
 
-//static void Interface_PackToBytestaffTx(InterfaceHandel_t* phdev,InterfaceCmdData_t *payload);
-//static bool Interface_PackToASCii(InterfaceHandel_t* phdev,InterfaceCmdData_t *payload);
 
-//typedef Algoritm (uint32_t)(void*)(uint8_t*,uint8_t*,uint32_t);
+  static size_t _this_rx_parser(InterfaceHandel_t* cthis,uint8_t* dst,const uint8_t* src,size_t len);
+  static void   _this_CmdRxUploadProc(InterfaceHandel_t* cthis);
+  static void   _this_CmdTxUploadProc(InterfaceHandel_t* cthis);
+/** @}*/ /* Interfafce Private Functions */
 
+/**
+ * @brief InterfaceHandel Class
+ * 
+ */
 struct InterfaceHandel
-{
-  eInterfaceProtocol_t ProtAlgoritm;
-  
-  uint32_t  (*AlgoritmRepack)(uint8_t* dst,const uint8_t* src,const uint32_t len);
-  uint32_t  (*AlgoritmPack)(uint8_t* dst,const uint8_t* src,const uint32_t len);
+{   
+  AlgoProto   AlgoritmPack;     /*!< Pointer to pack function*/    
+  AlgoProto   AlgoritmUnpuck;   /*!< Pointer to unpack function*/
 
-  uint16_t  (*AlgoritmCrc)(const uint8_t* data,uint32_t len);
-
-  uint8_t RxBuff[RX_BUFFER_LEN];
-  size_t 	Rx_len;
-  uint8_t	TxBuff[TX_BUFFER_LEN];
-  size_t 	Tx_len;
-  
+  sInterfaceRxFilter_t* cFilter;  /*!< Pointer to Riceve Filter Class*/
   
 
-  #ifdef CIRC_BUFF_NO_MALLOC_CNT
-    InterfaceCmdData_t IntrfcCmdDataRx[SMO_CIRC_RX_DEEP];
-    InterfaceCmdData_t IntrfcCmdDataTx[SMO_CIRC_TX_DEEP];
-  #endif
+  sCRCInterface_t*      cCRC;         /*!< Pointer to crc @ref sCRCInterface_t class*/ 
+
+
+  eInterfaceRxTxHandel_t irqmode;
+  //sHeadInterface_t* headchk;                               
+
+  uint8_t RxBuff[RX_BUFFER_LEN];/*!< Internal Rx Buffer*/
+  size_t  Rx_len;               /*!< Internal Rx Buffer len*/
+  uint8_t TxBuff[TX_BUFFER_LEN];/*!< Internal Tx Buffer*/
+  size_t  Tx_len;               /*!< Internal Tx Buffer len*/
  
-  uint8_t           Pack[PACK_BUFFER_LEN];
-
-	CircBuf_Handle_t *CircBuffRx;
-	CircBuf_Handle_t *CircBuffTx;
-	 
-  bool    CrcInPack;
-  bool    CrcChck;
-  bool    CrcHeadCalc;
+	CircBuff_t *CircBuffRx; /*!<Pointer to Tx Circbuff obj*/
+	CircBuff_t *CircBuffTx; /*!<Pointer to Rx Circbuff obj*/
   
-  bool    AddrInPack;
-
-  
-  
-  uint32_t Addr;
-  
-  HWInterface_t* HwInter; 
+  HWInterface_t* HwInter;             /*!< pointer to @ref HWInterface_t*/
+  sInterfaceIrqCallback_t hwCB;       /*!< pointer to @ref sInterfaceIrqCallback_t callback from hardware to interface*/
+  sInterfaceIrqParentCB_t parentCB;   /*!< pointer to @ref sInterfaceIrqParentCB_t callback from interface to parent*/
 };
 
-#ifdef NO_MY_MALLOC
-  #define NUMBER_OF_OBJ 3
-  static size_t hdev_indx = 0;
-  static InterfaceHandel_t hdev[NUMBER_OF_OBJ];
-#endif
 
-InterfaceHandel_t* Interface_ctor(HWInterface_t* HwInter)
+/**
+* @brief InterfaceHandel Class
+* @param pointer to abstract Harware interface class @ref HWInterface_t
+* @return pointer to allocated memory
+*/
+InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter)
 {
   if(HwInter == NULL) return NULL;
 
-  InterfaceHandel_t * phdev = NULL;
-  #ifdef NO_MY_MALLOC
-  if(hdev_indx < NUMBER_OF_OBJ)
-  {
-    #if (NUMBER_OF_OBJ == 1)
-      phdev = &hdev;
-    #else
-		  phdev = &hdev[hdev_indx];
-		  hdev_indx++;
-    #endif
-  }
-  else return NULL;
-  #else 
-    phdev = malloc(sizeof(InterfaceHandel_t));
-  #endif
+  InterfaceHandel_t* cthis = NULL;
+ 
+  if((cthis = heap_malloc_cast(InterfaceHandel_t)) == NULL)
 
-  if(phdev==NULL) return NULL;
-  phdev->HwInter = HwInter;
+    while(1); /* bug catch tag*/
+  cthis->HwInter = HwInter;
     
-  #ifdef CIRC_BUFF_NO_MALLOC_CNT
-    phdev->CircBuffRx = CircBuf_ctor(phdev->IntrfcCmdDataRx,SMO_CIRC_RX_DEEP);
-  #else
-    phdev->CircBuffRx = CircBuf_ctor(SMO_CIRC_RX_DEEP);
-  #endif
-
-  if(!phdev->CircBuffRx)
+  
+  cthis->CircBuffRx = CircBuff_ctor(RX_BUFFER_LEN,CIRC_RX_DEEP);
+  
+  if(cthis->CircBuffRx == NULL)
   {
-    Interface_dtor(phdev);
-    return phdev;
-  }
-
-  #ifdef CIRC_BUFF_NO_MALLOC_CNT
-    phdev->CircBuffTx = CircBuf_ctor(phdev->IntrfcCmdDataTx,SMO_CIRC_RX_DEEP);
-  #else
-    phdev->CircBuffTx = CircBuf_ctor(SMO_CIRC_RX_DEEP);
-  #endif
-
-  if(!phdev->CircBuffTx)
-  {
-    Interface_dtor(phdev);
-    CircBuf_dctor(phdev->CircBuffRx);
-      
-    #ifndef NO_MY_MALLOC
-      free(phdev);
-    #endif
-
+    CircBuff_dctor(cthis->CircBuffRx);
+    Interface_dtor(cthis);  
     return NULL;
   }
 
-  phdev->ProtAlgoritm = kInterfeceProto_ClassicBStaff;
-  #ifdef INTERFACE_PROTOCOL_BYTESTAFF
-    phdev->AlgoritmRepack = StaffGetPACKfromBuff;
-  #endif
-  memset(phdev->RxBuff,0,sizeof(phdev->RxBuff));
-  phdev->Rx_len = 0;
+  cthis->CircBuffTx = CircBuff_ctor(TX_BUFFER_LEN,CIRC_TX_DEEP);
 
-  memset(phdev->TxBuff,0,sizeof(phdev->RxBuff));
-  phdev->Tx_len = 0;
+  if(cthis->CircBuffTx == NULL)
+  {
+    CircBuff_dctor(cthis->CircBuffTx);
+    Interface_dtor(cthis);  
+    return NULL;
+  }
 
-  SetRxBuff(HwInter,phdev->RxBuff,sizeof(phdev->RxBuff));
-  SetTxBuff(HwInter,phdev->TxBuff,sizeof(phdev->TxBuff));
-
-  phdev->CrcInPack    = true;
-  phdev->CrcChck      = false;
-  phdev->CrcHeadCalc  = true;
-  phdev->AddrInPack   = true;
+  cthis->irqmode = kInterfaceRxTx_process;
   
-  phdev->Addr = 0;
+  memset(cthis->RxBuff,0,sizeof(cthis->RxBuff));
+  cthis->Rx_len = 0;
 
-  return phdev;
+  memset(cthis->TxBuff,0,sizeof(cthis->TxBuff));
+  cthis->Tx_len = 0;
+  
+  memset(&cthis->parentCB,NULL,sizeof(cthis->parentCB));
+  memset(&cthis->hwCB,NULL,sizeof(cthis->hwCB));
+
+  HwSetRxBuff(HwInter,cthis->RxBuff,sizeof(cthis->RxBuff));
+  HwSetTxBuff(HwInter,cthis->TxBuff,sizeof(cthis->TxBuff));
+
+  cthis->AlgoritmPack = cthis->AlgoritmUnpuck = _this_TimeProtocol;
+
+  cthis->cFilter = NULL;
+
+  cthis->cCRC = NULL;
+
+  return cthis;
 }
 
-void Interface_dtor(InterfaceHandel_t *phdev)
+/**
+ * @brief Interface class destructor
+ * 
+ * @param cthis pointer to @ref InterfaceHandel_t
+ */
+void Interface_dtor(InterfaceHandel_t* cthis)
 {
-  #ifndef NO_MY_MALLOC
-    free(phdev);
-  #else
-    if(hdev_indx != NUMBER_OF_OBJ) hdev_indx--;
-    else while(1); //bug_catch
-  #endif
-  phdev = NULL;
-}
-void                Interface_SetAddr(InterfaceHandel_t * phdev,uint32_t addr) {phdev->Addr = addr;};
-uint32_t            Interface_GetAddr(InterfaceHandel_t * phdev){return phdev->Addr;};
+  CircBuff_dctor(cthis->CircBuffRx);
+  CircBuff_dctor(cthis->CircBuffTx);
+  
+  heap_free(cthis);
 
-void Interface_SetProtoAlgoritm(InterfaceHandel_t *phdev, eInterfaceProtocol_t algoritm)
+  cthis = NULL;
+}
+
+/**
+ * @brief Set Intereface irq mode
+ * 
+ * @param cthis pointer to @ref InterfaceHandel_t 
+ * @param mode irq mode from @ref eInterfaceRxTxHandel_t
+ */
+void   Interface_SetMode(InterfaceHandel_t* cthis,const eInterfaceRxTxHandel_t mode)
 {
-  switch (algoritm)
+  switch (mode)
   {
-    #ifdef INTERFACE_PROTOCOL_BYTESTAFF
-    case kInterfeceProto_ClassicBStaff:     phdev->AlgoritmRepack = StaffGetPACKfromBuff;
-                                            phdev->AlgoritmPack = StaffSetBufftoPACK;
-                                            break;
-    #endif // INTERFACE_PROTOCOL_BYTESTAFF
+  case kInterfaceRxTx_process:  cthis->irqmode = mode;
+                                break;
+  case kInterfaceRxTx_irq:      cthis->irqmode = mode;
+                                cthis->hwCB.parent = cthis;
+                                cthis->hwCB.rx_cb  = _this_rx_irq;
+                                cthis->hwCB.tx_cb  = _this_tx_irq;
+                                cthis->hwCB.err_cb = _this_err_irq;
+                                HwSetCB(cthis->HwInter,&cthis->hwCB);
+                                break;
 
-    #ifdef INTERFACE_PROTOCOL_TIME_SEPARATION
-    case kInterfaceProto_Time_Separete_MB:  phdev->AlgoritmRepack = Interface_TimeProtocol;
-                                            phdev->AlgoritmPack = Interface_TimeProtocol;    
-                                            break;                                  
-    #endif //INTERFACE_PROTOCOL_TIME_SEPARATION
-    
-    #ifdef INTERFACE_PROTOCOL_ASCII
-    case kInterfeceProto_ASCii:         phdev->AlgoritmRepack = hex2ascii_getUintArr;
-                                        break;
-    #endif
-    default: return;
-  }
-
-  phdev->ProtAlgoritm = algoritm;
-}
-
-static bool  ReadRxBuff(void* this_ptr,uint8_t* data,size_t* len,size_t max_len){
-  HWInterface_t* HwInter = (HWInterface_t*)this_ptr;
-  return(HwInter->vtable->ReadRxBuff(HwInter,data,len,max_len));
-}
-
-static void SetRxBuff(void* this_ptr,uint8_t* data,size_t max_len)
-{
-  HWInterface_t* HwInter = (HWInterface_t*)this_ptr;
-  return(HwInter->vtable->SetRxBuff(HwInter,data,max_len));
-}
- 
-static void SetTxBuff(void* this_ptr,uint8_t* data,size_t max_len)
-{	
- HWInterface_t* HwInter = (HWInterface_t*)this_ptr;
- return(HwInter->vtable->SetTxBuff(HwInter,data,max_len));
-}
- 
-static void HwProcess(void* this_ptr){
-  HWInterface_t* HwInter = (HWInterface_t*)this_ptr;
-  HwInter->vtable->Process(HwInter);
-}
-
-static bool SendData(void* this_ptr,uint8_t* data,uint8_t len){
-  HWInterface_t* HwInter = (HWInterface_t*)this_ptr;
-  return HwInter->vtable->SendData(this_ptr,data,len);
-}
-
-static bool IsHwFree(void* this_ptr){
-  HWInterface_t* HwInter = (HWInterface_t*)this_ptr;
-  return HwInter->vtable->IsFree(this_ptr);
-}
-
-static bool Connect(void* this_ptr){
-  HWInterface_t* HwInter = (HWInterface_t*)this_ptr;
-  return HwInter->vtable->Connect(this_ptr);
-}
-
-static void CmdRxUploadProc(InterfaceHandel_t* phdev)
-{
-  if(ReadRxBuff(phdev->HwInter,phdev->RxBuff,&phdev->Rx_len,sizeof(phdev->RxBuff)))
-  {
-    uint32_t pack_leng = 0;
-    if((pack_leng = phdev->AlgoritmRepack(phdev->Pack,phdev->RxBuff,phdev->Rx_len))>0)
-    {
-      if(pack_leng < (offsetof(InterfaceCmdData_t,Data)+ sizeof(interface_crc_t)))
-        return;
-      
-      #ifdef ADDR_IN_PACK
-      if(((InterfaceCmdData_t*)phdev->Pack)->addr != phdev->Addr)      
-      {    
-        #ifdef ADDR_MULTICAST_SUPPORT
-        if(((InterfaceCmdData_t*)phdev->Pack)->addr != MULTICAST_ADDR)
-        #endif
-           return;
-      }     
-      #endif
-      
-      if(phdev->CrcChck) 
-      {
-        if(phdev->CrcHeadCalc)
-        {
-          if(!Interface_ChkCrc(phdev,phdev->Pack,pack_leng))
-            return;
-        }
-        else
-        {  
-          if(!Interface_ChkCrc(phdev,phdev->Pack+offsetof(InterfaceCmdData_t,Data),pack_leng-offsetof(InterfaceCmdData_t,Data)))   
-            return;
-        }
-      }                   
-      CircBuf_push_buff(phdev->CircBuffRx,phdev->Pack,pack_leng);
-    }
+  default:
+    break;
   }
 }
 
-bool  Interface_InstallCRCAlgoritm(InterfaceHandel_t* phdev,uint16_t(*CRCfunc)(const uint8_t*/*data*/,uint32_t /*len*/),bool CrcHeadCalc)
+/**
+ * @brief Get Interface max data length
+ * 
+ * @param cthis pointer to @ref InterfaceHandel
+ * @return size_t maximum packet length
+ */
+size_t    Interface_GetMaxDatalng(InterfaceHandel_t* cthis) {return HwGetMaxDataLeng(cthis->HwInter);}
+
+/**
+ * @brief Sets pack and unpack algoritm 
+ * 
+ * @param cthis pointer to @ref InterfaceHandel
+ * @param pack  pointer to pack @ref AlgoProto function
+ * @param unpack pointer to unpack @ref AlgoProto functiono
+ */
+void Interface_InstallProtoAlgoritm(InterfaceHandel_t* cthis,AlgoProto pack, AlgoProto unpack)
 {
-  if(CRCfunc == NULL)
+  if(
+      (cthis   == NULL)  
+    ||(pack   == NULL)
+    ||(unpack == NULL)
+    )
+  return;
+
+  cthis->AlgoritmPack = pack;
+  cthis->AlgoritmUnpuck = unpack;
+}
+
+/**
+ * @brief Link CRC algoritm function to @ref InterfaceHandel
+ * @param cthis pointer to @ref InterfaceHandel_t 
+ * @param crcf pointer to CRC @ref AlgoCrc algoritm func
+ * @param CrcHeadCalc true if need calculate crc for head, false for calculate only payload
+ * @return true if ok
+ * @return false if error
+ */
+bool  Interface_InstallCRCAlgoritm(InterfaceHandel_t* cthis,sCRCInterface_t* crc)
+{
+  if(crc == NULL)
     return false;
-  phdev->AlgoritmCrc = CRCfunc;
-  phdev->CrcHeadCalc = CrcHeadCalc;
-  phdev->CrcChck    = true;
-  phdev->CrcInPack  = true;
+  
+  cthis->cCRC = crc;
+
+  return true;
+}
+/**
+ * @brief installation rx filter class to interface 
+ * Filter is used to discard messages before they hit the buffer
+ * @param cthis pointer to @ref InterfaceHandel_t 
+ * @param filter pointer to @ref sInterfaceRxFilter_t class
+ * @return true   if filter install
+ * @return false  error
+ */
+bool Interface_InstallFilter(InterfaceHandel_t* cthis, sInterfaceRxFilter_t *filter)
+{
+  if((cthis == NULL)||(filter==NULL))
+    return false;
+  
+  cthis->cFilter = filter;
+
+  return true;
+}
+/**
+ * @brief set parent callback function for fast call in irq
+ * 
+ * @param cthis     pointer to @ref InterfaceHandel_t 
+ * @param parentCB  pointer to Interface irq parent callback struct @ref sInterfaceIrqParentCB_t
+ * @return true     if set successful
+ * @return false    if error
+ */
+bool Interface_SetCB(InterfaceHandel_t* cthis, sInterfaceIrqParentCB_t* parentCB)
+{
+  if((cthis == NULL) || (parentCB == NULL))
+    return false;
+  if(   (parentCB->parent == NULL)
+      ||(parentCB->RxCb == NULL)
+      ||(parentCB->TxCb == NULL)
+      ||(parentCB->ErrCb == NULL))
+    return false;
+
+  cthis->parentCB = *parentCB;
+
   return true;
 }
 
-
-bool  Interface_ChkCrc(InterfaceHandel_t* phdev,uint8_t* pack,uint32_t len)
+/**
+ * @brief Interface Rx Function for directly run in an interrupt 
+ * @details if irqmode = @arg kInterfaceRxTx_irq
+ * @param[in] this pointer to @ref InterfaceHandel_t 
+ * @param[in] src  data
+ * @param[in] len  data leng 
+ */
+static void _this_rx_irq(void* cthis,uint8_t* src,size_t len)
 {
-  uint32_t crc_shift = len-sizeof(interface_crc_t);
+  if(cthis == NULL) 
+    return;
   
-  
-  
-  uint16_t crc = phdev->AlgoritmCrc(pack,crc_shift);
-  
-  if(crc != (*((uint16_t*)(pack+crc_shift)))) return false;
-  else return true;
+  uint8_t   pack[sizeof(INTERFACE_CAST(cthis)->RxBuff)];
+  size_t    pack_leng = 0;
+  if((pack_leng = _this_rx_parser(cthis,pack,src,len)) == 0)
+    return; /* No valid data*/
+    
+  if(INTERFACE_CAST(cthis)->parentCB.RxCb != NULL)
+    INTERFACE_CAST(cthis)->parentCB.RxCb(INTERFACE_CAST(cthis)->parentCB.parent,INTERFACE_CAST(cthis),pack,pack_leng);
+  else
+    CircBuff_push(INTERFACE_CAST(cthis)->CircBuffRx,pack,pack_leng);
 }
 
 
-
-static void CmdTxUploadProc(InterfaceHandel_t* phdev)
+/**
+ * @brief Interface data parser
+ * 
+ * @param[in]   this pointer to @ref InterfaceHandel_t 
+ * @param[out]  dst parsered data
+ * @param[in]   src data  
+ * @param[in]   len data leng
+ * @return      size_t parsed data leng
+ */
+static size_t _this_rx_parser(InterfaceHandel_t* cthis,uint8_t* dst,const uint8_t* src,size_t len)
 {
-  if(CircBuf_IsFree(phdev->CircBuffTx)) return;
-  if(!IsHwFree(phdev->HwInter)) return;
-
-  InterfaceCmdData_t message;
-
-  CircBuf_pop(phdev->CircBuffTx,&message);
-  
-  SendData(phdev->HwInter,message.Data,message.len);
-}
-
-bool Interface_sendCMD(InterfaceHandel_t* phdev,InterfaceCmdData_t *payload)
-{ 
-  #ifdef ADDR_IN_PACK
-    payload->addr = phdev->Addr;
-  #endif
-
-  if(phdev->CrcInPack) 
+  size_t pack_leng = 0;
+  if((pack_leng = cthis->AlgoritmUnpuck(dst,src,len)) == 0)
+    return 0;
+    
+  if(cthis->cCRC != NULL)
   {
-    uint16_t total_leng = payload->len+sizeof(interface_crc_t);
-    if(total_leng>INTERFACE_MAX_PACK_LENG) while(1); //bug_catch
-    if(phdev->CrcInPack) Interface_InsertCrc(phdev,payload);
+    if(pack_leng<=CRC_GetSize(cthis->cCRC))
+      return 0;
+    if(!_this_CRCcheck(cthis,dst,len))
+      return 0;
+    else 
+      pack_leng-=CRC_GetSize(cthis->cCRC);
   }
+  if(cthis->cFilter != NULL)
+    if(!cthis->cFilter->func(cthis->cFilter->parent,dst,len))
+      return 0;  
+  
+  return pack_leng;
+}
 
-  phdev->Tx_len = phdev->AlgoritmPack(phdev->TxBuff,(uint8_t*)payload,payload->len+offsetof(InterfaceCmdData_t,Data));
 
-  if(phdev->Tx_len == 0) return false;
 
-  if(SendData(phdev->HwInter,phdev->TxBuff,phdev->Tx_len)) 
+
+/**
+ * @brief Check crc wrapper 
+ * 
+ * @param cthis pointer to @ref InterfaceHandel_t 
+ * @param data pointer to data
+ * @param len  sizeof of data
+ * @return true   if crc ok
+ * @return false  else
+ */
+bool  _this_CRCcheck(const InterfaceHandel_t* cthis,const uint8_t* pack,const uint32_t len)
+{
+  uint32_t crc_shift = len-CRC_GetSize(cthis->cCRC);
+     
+  uint16_t crc = CRC_GetCRC(cthis->cCRC,pack,crc_shift);
+  
+  if(crc != (*((uint16_t*)(pack+crc_shift)))) 
+    return false;
+  else 
+    return true;
+}
+
+/**
+ * @brief  Send data via @ref InterfaceHandel_t
+ * 
+ * @param hdev     
+ * @param payload 
+ * @param leng 
+ * @return true 
+ * @return false 
+ */
+
+/**
+ * @brief Send data via @ref InterfaceHandel_t
+ * 
+ * @param[in] cthis     pointer to @ref InterfaceHandel_t 
+ * @param[in] payload   pointer to data 
+ * @param[in] leng      data size to send
+ * @return true 
+ * @return false 
+ */
+bool Interface_SendData(InterfaceHandel_t* cthis,void *payload,size_t leng)
+{ 
+  if(cthis->cCRC != NULL) 
+  {
+    if(leng+CRC_GetSize(cthis->cCRC)>sizeof(cthis->TxBuff))
+      return false;
+    _this_InsertCRC(cthis,payload,&leng);
+  }
+  
+  cthis->Tx_len = cthis->AlgoritmPack(cthis->TxBuff,(uint8_t*)payload,leng);
+
+  if(cthis->Tx_len == 0) return false;
+  
+  bool state = false;
+
+  if(HwSendData(cthis->HwInter,cthis->TxBuff,cthis->Tx_len)) 
     return true;
   else 
   {
-    CircBuf_push_DataCmdLen(phdev->CircBuffTx,phdev->TxBuff,payload->cmd,phdev->Tx_len);
-    return true;
+    if(cthis->irqmode == kInterfaceRxTx_irq)
+    {  
+      HwEnterCriticalTx(cthis->HwInter);
+      
+      state = CircBuff_push(cthis->CircBuffTx,cthis->TxBuff,cthis->Tx_len);
+    
+      HwExitCriticalTx(cthis->HwInter);
+    }
+    else
+      state = CircBuff_push(cthis->CircBuffTx,cthis->TxBuff,cthis->Tx_len);
   }
-
-  return false;
+  return state;
 }
 
-bool Interface_Connect(InterfaceHandel_t *phdev){return Connect(phdev->HwInter);}
-
-static void Interface_InsertCrc(InterfaceHandel_t *phdev,InterfaceCmdData_t* message)
+/**
+ * @brief Interface tx Function for directly run in an interrupt 
+ * 
+ * @details if irqmode = @arg kInterfaceRxTx_irq. whis should be  TX Notempty irq
+ * @param[in] this_ptr pointer to @ref InterfaceHandel_t  
+ */
+static void _this_tx_irq(void* this_ptr)
 {
-  if(phdev->CrcChck)
+  InterfaceHandel_t* cthis = INTERFACE_CAST(this_ptr);
+  
+  if(CircBuff_pop(cthis->CircBuffTx,cthis->TxBuff,&cthis->Tx_len))
+    HwSendData(cthis->HwInter,cthis->TxBuff,cthis->Tx_len);
+}
+
+
+/**
+ * @brief Insert crc to data
+ * 
+ * @param cthis pointer to @ref InterfaceHandel_t
+ * @param src  pointer to data
+ * @param leng pointer to size of data (increment then)
+ */
+static void _this_InsertCRC(const InterfaceHandel_t* cthis,uint8_t* src,size_t* len)
+{
+  *((uint16_t*)(src+*len)) = CRC_GetCRC(cthis->cCRC,src,*len);
+  *len += CRC_GetSize(cthis->cCRC);
+}
+
+
+/**
+ * @brief Read Data from Interface buffer
+ * 
+ * @param cthis this pointer to @ref InterfaceHandel_t  
+ * @param dst  pointer to output data
+ * @return size_t size of output data
+ */
+size_t Interface_readData(InterfaceHandel_t* cthis,void *dst)
+{
+  if(CircBuff_IsFree(cthis->CircBuffRx))
+    return 0;
+  
+  size_t leng = 0;
+
+  if(cthis->irqmode == kInterfaceRxTx_irq)
   {
-    if(phdev->CrcHeadCalc)
-      *((uint16_t*)(message->Data+(message->len))) = phdev->AlgoritmCrc((uint8_t*)message,message->len+offsetof(InterfaceCmdData_t,Data));
-    else  
-      *((uint16_t*)(message->Data+(message->len))) = phdev->AlgoritmCrc(message->Data,message->len);
-  } 
+    HwEnterCriticalRx(cthis->HwInter);
+
+    CircBuff_pop(cthis->CircBuffRx,dst,&leng);
+
+    HwExitCriticalRx(cthis->HwInter);
+  }
   else
-    *((uint16_t*)(message->Data+(message->len))) = 0xAAAA;
-
-  message->len+=sizeof(interface_crc_t);
+    CircBuff_pop(cthis->CircBuffRx,dst,&leng);
+  
+  return leng;
+}
+/**
+ * @brief Check is Interface cmd buffer not empty
+ * 
+ * @param cthis    this pointer to @ref InterfaceHandel_t  
+ * @return true   if cmd buffer not empty
+ * @return false  else
+ */
+bool  Interface_isRxNe(InterfaceHandel_t* cthis)
+{
+  return !CircBuff_IsFree(cthis->CircBuffRx);
 }
 
-void Interface_process(InterfaceHandel_t* phdev)
+/**
+ * @brief Connect to interface
+ * 
+ * @param cthis    pointer to @ref InterfaceHandel_t
+ * @return true   if connect successful
+ * @return false  else
+ */
+bool Interface_Connect(InterfaceHandel_t* cthis){return HwConnect(cthis->HwInter);}
+
+/**
+ * @brief Disconnect from interface
+ * 
+ * @param cthis    pointer to @ref InterfaceHandel_t
+ * @return true   if disonnect successful
+ * @return false  else
+ */
+bool Interface_Disconnect(InterfaceHandel_t* cthis)
 {
-  CmdTxUploadProc(phdev);
-  CmdRxUploadProc(phdev);
+  if(HwIsFree(cthis->HwInter))
+    return HwDisconnect(cthis->HwInter);
+  else
+    return false;
 }
 
-bool Interface_readCMD(InterfaceHandel_t * phdev,InterfaceCmdData_t *payload)
+/**
+ * @brief Interface main process
+ * @note  it's not blocking function and must run in an infinite loop, or rtos task
+ *        It processes the @ref _this_CmdTxUploadProc()and @ref _this_CmdRxUploadProc()
+ * @param cthis pointer to @ref InterfaceHandel_t 
+ */
+void Interface_process(InterfaceHandel_t* cthis)
 {
-  return CircBuf_pop(phdev->CircBuffRx,payload);
+  if(cthis->irqmode == kInterfaceRxTx_irq)
+    return; /* should not be use in irq mode*/
+  
+  _this_CmdTxUploadProc(cthis);
+  _this_CmdRxUploadProc(cthis);
 }
 
-bool  Interface_isCMDdRDY(InterfaceHandel_t * phdev)
+/**
+ * @brief Rx Command upload none blocking process 
+ * @note  Check Rx flag, and append CircBuff is not empty
+ * @param cthis pointer to @ref InterfaceHandel_t 
+ */
+static void _this_CmdRxUploadProc(InterfaceHandel_t* cthis)
 {
-  return !CircBuf_IsFree(phdev->CircBuffRx);
+  if(HwReadRxBuff(cthis->HwInter,cthis->RxBuff,&cthis->Rx_len,sizeof(cthis->RxBuff)))
+  {
+    uint32_t  pack_leng = 0;
+    uint8_t   pack[sizeof(cthis->RxBuff)];
+    
+    if((pack_leng = _this_rx_parser(cthis,pack,cthis->RxBuff,cthis->Rx_len)) == 0)
+      return; /* No valid data*/       
+    CircBuff_push(cthis->CircBuffRx,pack,pack_leng);
+  }
+}
+
+/**
+ * @brief Tx Command upload none blocking process 
+ * @note  Check Rx flag, and append CircBuff is not empty
+ * @param cthis pointer to @ref InterfaceHandel_t 
+ */
+static void _this_CmdTxUploadProc(InterfaceHandel_t* cthis)
+{
+  if(CircBuff_IsFree(cthis->CircBuffTx)) return;
+    if(!HwIsFree(cthis->HwInter)) return;
+  
+  if(CircBuff_pop(cthis->CircBuffTx,cthis->TxBuff,&cthis->Tx_len))
+      HwSendData(cthis->HwInter,cthis->TxBuff,cthis->Tx_len);
 }
