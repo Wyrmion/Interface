@@ -22,8 +22,8 @@ extern "C"{
 
 
 
-#include <../Interface/InterfaceConf.h>
-#include <../CRC/CRCInterface.h>
+#include "../Interface/Interface/InterfaceConf.h"
+#include "../CRC/CRCInterface.h"
 
 /**
  * @addtogroup Wyrm_Drivers Wyrm Drivers
@@ -165,7 +165,7 @@ typedef struct
    * @defgroup Interface_public_ctor_dtor Interface constructor/destructor
    * @{
    */ 
-  InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter);
+  InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter,size_t IntBuffSize);
   void                Interface_dtor(InterfaceHandel_t* hdev);
   /** @}*/
   

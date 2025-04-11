@@ -74,10 +74,15 @@ struct InterfaceHandel
   eInterfaceRxTxHandel_t irqmode;
   //sHeadInterface_t* headchk;                               
 
-  uint8_t RxBuff[RX_BUFFER_LEN];/*!< Internal Rx Buffer*/
-  size_t  Rx_len;               /*!< Internal Rx Buffer len*/
-  uint8_t TxBuff[TX_BUFFER_LEN];/*!< Internal Tx Buffer*/
-  size_t  Tx_len;               /*!< Internal Tx Buffer len*/
+  uint8_t* RxBuff;/*!< Internal Rx Buffer*/
+  size_t   Rx_len;               /*!< Internal Rx Buffer len*/
+  size_t   RxBuffLen;
+
+  uint8_t* TxBuff;/*!< Internal Tx Buffer*/
+  size_t    Tx_len;               /*!< Internal Tx Buffer len*/
+  size_t   TxBuffLen;
+
+
  
 	CircBuff_t *CircBuffRx; /*!<Pointer to Tx Circbuff obj*/
 	CircBuff_t *CircBuffTx; /*!<Pointer to Rx Circbuff obj*/
@@ -93,7 +98,7 @@ struct InterfaceHandel
 * @param pointer to abstract Harware interface class @ref HWInterface_t
 * @return pointer to allocated memory
 */
-InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter)
+InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter,size_t IntBuffSize)
 {
   if(HwInter == NULL) return NULL;
 
@@ -103,9 +108,15 @@ InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter)
 
     while(1); /* bug catch tag*/
   cthis->HwInter = HwInter;
-    
   
-  cthis->CircBuffRx = CircBuff_ctor(RX_BUFFER_LEN,CIRC_RX_DEEP);
+  cthis->RxBuffLen = cthis->TxBuffLen = IntBuffSize;
+
+  if((cthis->RxBuff = heap_malloc(IntBuffSize)) == NULL)
+    while(1);
+  if((cthis->TxBuff = heap_malloc(IntBuffSize)) == NULL)
+    while(1);
+  
+  cthis->CircBuffRx = CircBuff_ctor(384,CIRC_RX_DEEP);
   
   if(cthis->CircBuffRx == NULL)
   {
@@ -114,7 +125,7 @@ InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter)
     return NULL;
   }
 
-  cthis->CircBuffTx = CircBuff_ctor(TX_BUFFER_LEN,CIRC_TX_DEEP);
+  cthis->CircBuffTx = CircBuff_ctor(384,CIRC_TX_DEEP);
 
   if(cthis->CircBuffTx == NULL)
   {
@@ -125,17 +136,17 @@ InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter)
 
   cthis->irqmode = kInterfaceRxTx_process;
   
-  memset(cthis->RxBuff,0,sizeof(cthis->RxBuff));
+  memset(cthis->RxBuff,0,IntBuffSize);
   cthis->Rx_len = 0;
 
-  memset(cthis->TxBuff,0,sizeof(cthis->TxBuff));
+  memset(cthis->TxBuff,0,IntBuffSize);
   cthis->Tx_len = 0;
   
   memset(&cthis->parentCB,NULL,sizeof(cthis->parentCB));
   memset(&cthis->hwCB,NULL,sizeof(cthis->hwCB));
 
-  HwSetRxBuff(HwInter,cthis->RxBuff,sizeof(cthis->RxBuff));
-  HwSetTxBuff(HwInter,cthis->TxBuff,sizeof(cthis->TxBuff));
+  HwSetRxBuff(HwInter,cthis->RxBuff,IntBuffSize);
+  HwSetTxBuff(HwInter,cthis->TxBuff,IntBuffSize);
 
   cthis->AlgoritmPack = cthis->AlgoritmUnpuck = _this_TimeProtocol;
 
@@ -373,7 +384,7 @@ bool Interface_SendData(InterfaceHandel_t* cthis,void *payload,size_t leng)
 { 
   if(cthis->cCRC != NULL) 
   {
-    if(leng+CRC_GetSize(cthis->cCRC)>sizeof(cthis->TxBuff))
+    if(leng+CRC_GetSize(cthis->cCRC)>cthis->TxBuffLen)
       return false;
     _this_InsertCRC(cthis,payload,&leng);
   }
@@ -516,10 +527,10 @@ void Interface_process(InterfaceHandel_t* cthis)
  */
 static void _this_CmdRxUploadProc(InterfaceHandel_t* cthis)
 {
-  if(HwReadRxBuff(cthis->HwInter,cthis->RxBuff,&cthis->Rx_len,sizeof(cthis->RxBuff)))
+  if(HwReadRxBuff(cthis->HwInter,cthis->RxBuff,&cthis->Rx_len,cthis->RxBuffLen))
   {
     uint32_t  pack_leng = 0;
-    uint8_t   pack[sizeof(cthis->RxBuff)];
+    uint8_t   pack[cthis->RxBuffLen];
     
     if((pack_leng = _this_rx_parser(cthis,pack,cthis->RxBuff,cthis->Rx_len)) == 0)
       return; /* No valid data*/       

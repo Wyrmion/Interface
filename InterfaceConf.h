@@ -21,7 +21,7 @@ extern "C"{
 #include <stdbool.h>
 #include <stddef.h>
 
-#include <../Interface/InterfacePrivate.h>
+#include "../Interface/Interface/InterfacePrivate.h"
 
 
 /**
@@ -80,8 +80,8 @@ extern "C"{
 
   #define CIRC_BUFF_CNT           2
   
-  #define CIRC_RX_DEEP            5
-  #define CIRC_TX_DEEP            5
+  #define CIRC_RX_DEEP            4
+  #define CIRC_TX_DEEP            4
 
 #endif
 
