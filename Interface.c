@@ -3,7 +3,7 @@
  * @file     Interface.c
  * @author   Kukushkin A.V.
  * @brief    This code is designed to work with various kinds of interfaces. It is a parent class
- * @version  V1.6.6
+ * @version  V1.6.7
  * @date     17 Jan. 2025.
  *************************************************************************
  */
@@ -23,7 +23,7 @@
 #include "../Interface/InterfacePrivate.h"
 #include "../Interface/InterfacePrivateWrapper.h"
 #include "../Interface/CircBuff/CircBuff.h"
-#include "../Memory/Heap/my_heap.h"
+#include "../Memory/MyHeap/my_heap.h"
 
 
 
@@ -99,7 +99,7 @@ struct InterfaceHandel
 * @param pointer to abstract Harware interface class @ref HWInterface_t
 * @return pointer to allocated memory
 */
-InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter,size_t IntBuffSize)
+InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter,size_t IntBuffSize,size_t CircDeep)
 {
   if(HwInter == NULL) return NULL;
 
@@ -119,7 +119,7 @@ InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter,size_t IntBuffSize)
   if((cthis->Pack = heap_malloc(IntBuffSize)) == NULL)
     while(1);
   
-  cthis->CircBuffRx = CircBuff_ctor(IntBuffSize,CIRC_RX_DEEP);
+  cthis->CircBuffRx = CircBuff_ctor(IntBuffSize,CircDeep);
   
   if(cthis->CircBuffRx == NULL)
   {
@@ -128,7 +128,7 @@ InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter,size_t IntBuffSize)
     return NULL;
   }
 
-  cthis->CircBuffTx = CircBuff_ctor(IntBuffSize,CIRC_TX_DEEP);
+  cthis->CircBuffTx = CircBuff_ctor(IntBuffSize,CircDeep);
 
   if(cthis->CircBuffTx == NULL)
   {

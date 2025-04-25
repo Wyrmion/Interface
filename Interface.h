@@ -22,8 +22,8 @@ extern "C"{
 
 
 
-#include "../Interface/Interface/InterfaceConf.h"
-#include "../CRC/CRCInterface.h"
+#include "../Interface/InterfacePrivate.h"
+#include "../Interface/CRC/CRCInterface.h"
 
 /**
  * @addtogroup Wyrm_Drivers Wyrm Drivers
@@ -46,38 +46,6 @@ extern "C"{
 #define INTERFACE_HEAD_SIZE sizeof(InterfaceCmdDataHead_t)
 /** @}*/
 
-/**
- * @brief Standart Interface data pack
- * 
- */
-
-#pragma pack(1)
-typedef struct 
-{
-  #ifdef ADDR_IN_PACK
-    uint8_t   addr; /*!< Interface device address*/
-  #endif
-    uint8_t   cmd;  /*!< Command byte*/
-  #ifdef LEN_IN_PACK
-    uint16_t  len;  /*!< len */
-  #endif
-}InterfaceCmdDataHead_t;
-
-
-/**
- * @brief Standart Interface data pack
- * 
- */
-typedef struct
-{
-  #ifdef ADDR_IN_PACK
-    uint8_t   addr;
-  #endif
-  uint8_t   cmd;
-  uint8_t   Data[INTERFACE_MAX_PACK_LENG];
-  uint32_t  len;
-}InterfaceCmdData_t;
-#pragma pack()
 
 
 typedef struct InterfaceHandel InterfaceHandel_t;       /*!< Interface Class typedef*/
@@ -152,11 +120,6 @@ typedef struct
   RxFilter  func;   /*!< Pointer to filter algoritm*/
 }sInterfaceRxFilter_t;
 
-
-
-
-
-
 /**
  * @defgroup Interface_public_func Interface public function
  * @{
@@ -165,7 +128,7 @@ typedef struct
    * @defgroup Interface_public_ctor_dtor Interface constructor/destructor
    * @{
    */ 
-  InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter,size_t IntBuffSize);
+  InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter,size_t IntBuffSize,size_t CircDeep);
   void                Interface_dtor(InterfaceHandel_t* hdev);
   /** @}*/
   
