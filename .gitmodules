@@ -1,0 +1,4 @@
+[submodule "CircBuff"]
+	path = CircBuff
+	url = ../CircBuff
+	branch = master
