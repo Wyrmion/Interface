@@ -3,7 +3,7 @@
  * @file     Interface.c
  * @author   Kukushkin A.V.
  * @brief    This code is designed to work with various kinds of interfaces. It is a parent class
- * @version  V1.6.4
+ * @version  V1.6.6
  * @date     17 Jan. 2025.
  *************************************************************************
  */
@@ -74,14 +74,15 @@ struct InterfaceHandel
   eInterfaceRxTxHandel_t irqmode;
   //sHeadInterface_t* headchk;                               
 
-  uint8_t* RxBuff;/*!< Internal Rx Buffer*/
-  size_t   Rx_len;               /*!< Internal Rx Buffer len*/
+  uint8_t* RxBuff;      /*!< Internal Rx Buffer*/
+  size_t   Rx_len;      /*!< Internal Rx Buffer len*/
   size_t   RxBuffLen;
 
-  uint8_t* TxBuff;/*!< Internal Tx Buffer*/
-  size_t    Tx_len;               /*!< Internal Tx Buffer len*/
+  uint8_t* TxBuff;      /*!< Internal Tx Buffer*/
+  size_t    Tx_len;     /*!< Internal Tx Buffer len*/
   size_t   TxBuffLen;
-
+  
+  uint8_t* Pack;        /*!< Temp pack buffer*/
 
  
 	CircBuff_t *CircBuffRx; /*!<Pointer to Tx Circbuff obj*/
@@ -115,8 +116,10 @@ InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter,size_t IntBuffSize)
     while(1);
   if((cthis->TxBuff = heap_malloc(IntBuffSize)) == NULL)
     while(1);
+  if((cthis->Pack = heap_malloc(IntBuffSize)) == NULL)
+    while(1);
   
-  cthis->CircBuffRx = CircBuff_ctor(384,CIRC_RX_DEEP);
+  cthis->CircBuffRx = CircBuff_ctor(IntBuffSize,CIRC_RX_DEEP);
   
   if(cthis->CircBuffRx == NULL)
   {
@@ -125,7 +128,7 @@ InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter,size_t IntBuffSize)
     return NULL;
   }
 
-  cthis->CircBuffTx = CircBuff_ctor(384,CIRC_TX_DEEP);
+  cthis->CircBuffTx = CircBuff_ctor(IntBuffSize,CIRC_TX_DEEP);
 
   if(cthis->CircBuffTx == NULL)
   {
@@ -530,11 +533,14 @@ static void _this_CmdRxUploadProc(InterfaceHandel_t* cthis)
   if(HwReadRxBuff(cthis->HwInter,cthis->RxBuff,&cthis->Rx_len,cthis->RxBuffLen))
   {
     uint32_t  pack_leng = 0;
-    uint8_t   pack[cthis->RxBuffLen];
     
-    if((pack_leng = _this_rx_parser(cthis,pack,cthis->RxBuff,cthis->Rx_len)) == 0)
+
+    if(cthis->Rx_len > cthis->RxBuffLen)
+      while(1);
+
+    if((pack_leng = _this_rx_parser(cthis,cthis->Pack,cthis->RxBuff,cthis->Rx_len)) == 0)
       return; /* No valid data*/       
-    CircBuff_push(cthis->CircBuffRx,pack,pack_leng);
+    CircBuff_push(cthis->CircBuffRx,cthis->Pack,pack_leng);
   }
 }
 
@@ -545,8 +551,11 @@ static void _this_CmdRxUploadProc(InterfaceHandel_t* cthis)
  */
 static void _this_CmdTxUploadProc(InterfaceHandel_t* cthis)
 {
-  if(CircBuff_IsFree(cthis->CircBuffTx)) return;
-    if(!HwIsFree(cthis->HwInter)) return;
+  if(CircBuff_IsFree(cthis->CircBuffTx)) 
+    return;
+  
+  if(!HwIsFree(cthis->HwInter)) 
+    return;
   
   if(CircBuff_pop(cthis->CircBuffTx,cthis->TxBuff,&cthis->Tx_len))
       HwSendData(cthis->HwInter,cthis->TxBuff,cthis->Tx_len);
