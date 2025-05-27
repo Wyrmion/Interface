@@ -3,8 +3,8 @@
  * @file     Interface.c
  * @author   Kukushkin A.V.
  * @brief    This code is designed to work with various kinds of interfaces. It is a parent class
- * @version  V1.6.7
- * @date     17 Jan. 2025.
+ * @version  V1.6.8
+ * @date     27 May. 2025.
  *************************************************************************
  */
 /*
@@ -323,6 +323,10 @@ static size_t _this_rx_parser(InterfaceHandel_t* cthis,uint8_t* dst,const uint8_
   size_t pack_leng = 0;
   if((pack_leng = cthis->AlgoritmUnpuck(dst,src,len)) == 0)
     return 0;
+  
+  if(cthis->cFilter != NULL)
+    if(!cthis->cFilter->func(cthis->cFilter->parent,dst,len))
+      return 0;    
     
   if(cthis->cCRC != NULL)
   {
@@ -333,9 +337,7 @@ static size_t _this_rx_parser(InterfaceHandel_t* cthis,uint8_t* dst,const uint8_
     else 
       pack_leng-=CRC_GetSize(cthis->cCRC);
   }
-  if(cthis->cFilter != NULL)
-    if(!cthis->cFilter->func(cthis->cFilter->parent,dst,len))
-      return 0;  
+
   
   return pack_leng;
 }

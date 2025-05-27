@@ -75,7 +75,7 @@ typedef struct {
     void    (*Process)(void*/*this*/);                                                          /*!< None blocking while(if needed)*/
         
     bool    (*IsFree)(void* /*this*/);                                                          /*!< Get interface state*/
-    bool    (*SendData)(void* /*this*/,uint8_t* /*data*/,uint8_t /*len*/);                      /*!< Send data */
+    bool    (*SendData)(void* /*this*/,uint8_t* /*data*/,size_t /*len*/);                      /*!< Send data */
     bool    (*ReadRxBuff)(void* /*this*/,uint8_t* /*data*/,size_t* /*len*/,size_t /*max len*/); /*!< Read Rx buffer */
     size_t  (*GetMaxDataLeng)(void* /*this*/);
     

@@ -42,7 +42,7 @@ extern "C"{
  * @{
  */
 #define ADDR_IN_PACK
-#define make_interface(parent) Interface_ctor((HWInterface_t*)parent)
+#define make_interface(parent,IntBuffSize,CircDeep) Interface_ctor((HWInterface_t*)parent,IntBuffSize,CircDeep)
 #define INTERFACE_HEAD_SIZE sizeof(InterfaceCmdDataHead_t)
 /** @}*/
 
