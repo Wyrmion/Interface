@@ -1,8 +1,0 @@
-[submodule "CircBuff"]
-	path = CircBuff
-	url = ../CircBuff
-	branch = master
-[submodule "CRC"]
-	path = CRC
-	url = ../CRC
-	branch = master

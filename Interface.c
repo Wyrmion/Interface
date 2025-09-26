@@ -3,8 +3,8 @@
  * @file     Interface.c
  * @author   Kukushkin A.V.
  * @brief    This code is designed to work with various kinds of interfaces. It is a parent class
- * @version  V1.6.8
- * @date     27 May. 2025.
+ * @version  V1.6.7
+ * @date     17 Jan. 2025.
  *************************************************************************
  */
 /*
