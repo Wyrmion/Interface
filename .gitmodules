@@ -1,0 +1,8 @@
+[submodule "CRC"]
+	path = CRC
+	url = https://gitflic.ru/project/wyrm/crc.git
+	branch = master
+[submodule "CircBuff"]
+	path = CircBuff
+	url = https://gitflic.ru/project/wyrm/circbuff.git
+	branch = master
