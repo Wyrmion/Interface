@@ -1,10 +1,10 @@
 /**
  ****************************************************************************
  * @file     Interface.c
- * @author   Kukushkin A.V.
+ * @author   Wyrm
  * @brief    This code is designed to work with various kinds of interfaces. It is a parent class
- * @version  V1.6.7
- * @date     17 Jan. 2025.
+ * @version  V1.7.0
+ * @date     02 Feb. 2026.
  *************************************************************************
  */
 /*
@@ -16,14 +16,18 @@
 
 */
 
+
 #include <string.h>
 #include <stdlib.h>
 
-#include "../Interface/Interface.h"
-#include "../Interface/InterfacePrivate.h"
-#include "../Interface/InterfacePrivateWrapper.h"
+#include "wheap.h"
+
+#include "Interface.h"
+#include "InterfacePrivate.h"
+#include "InterfacePrivateWrapper.h"
+
 #include "../Interface/CircBuff/CircBuff.h"
-#include "../Memory/MyHeap/my_heap.h"
+//#include "../Memory/MyHeap/my_heap.h"
 
 
 
@@ -36,7 +40,7 @@
  * @{
  */
 
-#define INTERFACE_CAST(cthis) ((InterfaceHandel_t*)cthis)
+#define CAST_INTERFACE(cthis) ((InterfaceHandel_t*)cthis)
 
 /* Private function prototypes -----------------------------------------------*/
 /** @defgroup Interfafce_Private_Functions Interfafce Private Functions
@@ -44,14 +48,14 @@
   */
   static bool   _this_CRCcheck(const InterfaceHandel_t* cthis,const uint8_t* pack,const uint32_t len);
   static void   _this_InsertCRC(const InterfaceHandel_t* cthis,uint8_t* src,size_t* len);
-  static size_t _this_TimeProtocol(uint8_t * dst,const uint8_t* src,size_t len){memcpy(dst,src,len); return len;};
+  //static size_t _this_TimeProtocol(uint8_t * dst,const uint8_t* src,size_t len){memcpy(dst,src,len); return len;};
   
   static void   _this_rx_irq(void* cthis,uint8_t* src,size_t len);
   static void   _this_tx_irq(void* this_ptr);
   static void   _this_err_irq(void* this_ptr){(void)this_ptr;};
 
 
-  static size_t _this_rx_parser(InterfaceHandel_t* cthis,uint8_t* dst,const uint8_t* src,size_t len);
+  static size_t _this_rx_parser(InterfaceHandel_t* cthis,uint8_t* src,size_t len);
   static void   _this_CmdRxUploadProc(InterfaceHandel_t* cthis);
   static void   _this_CmdTxUploadProc(InterfaceHandel_t* cthis);
 /** @}*/ /* Interfafce Private Functions */
@@ -74,23 +78,25 @@ struct InterfaceHandel
   eInterfaceRxTxHandel_t irqmode;
   //sHeadInterface_t* headchk;                               
 
-  uint8_t* RxBuff;      /*!< Internal Rx Buffer*/
-  size_t   Rx_len;      /*!< Internal Rx Buffer len*/
-  size_t   RxBuffLen;
+  uint8_t*  RxBuff;      /*!< Internal Rx Buffer*/
+  size_t    Rx_len;      /*!< Internal Rx Buffer len*/
+  size_t    RxBuffLen;
 
-  uint8_t* TxBuff;      /*!< Internal Tx Buffer*/
+  uint8_t*  TxBuff;      /*!< Internal Tx Buffer*/
   size_t    Tx_len;     /*!< Internal Tx Buffer len*/
-  size_t   TxBuffLen;
+  size_t    TxBuffLen;
   
-  uint8_t* Pack;        /*!< Temp pack buffer*/
+  uint8_t*  Pack;       /*!< Temp pack buffer*/
 
+  size_t    LastLeng;   /*!< LastLeng buffer*/
+  uint8_t*  CurData;
  
-	CircBuff_t *CircBuffRx; /*!<Pointer to Tx Circbuff obj*/
-	CircBuff_t *CircBuffTx; /*!<Pointer to Rx Circbuff obj*/
+	CircBuff_t*     CircBuffRx; /*!<Pointer to Tx Circbuff obj*/
+	CircBuff_t*     CircBuffTx; /*!<Pointer to Rx Circbuff obj*/
   
-  HWInterface_t* HwInter;             /*!< pointer to @ref HWInterface_t*/
-  sInterfaceIrqCallback_t hwCB;       /*!< pointer to @ref sInterfaceIrqCallback_t callback from hardware to interface*/
-  sInterfaceIrqParentCB_t parentCB;   /*!< pointer to @ref sInterfaceIrqParentCB_t callback from interface to parent*/
+  HWInterface_t*  HwInter;              /*!< pointer to @ref HWInterface_t*/
+  sInterfaceIrqCallback_t hwCB;         /*!< pointer to @ref sInterfaceIrqCallback_t callback from hardware to interface*/
+  sInterfaceIrqParentCB_t parentCB;     /*!< pointer to @ref sInterfaceIrqParentCB_t callback from interface to parent*/
 };
 
 
@@ -119,22 +125,29 @@ InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter,size_t IntBuffSize,siz
   if((cthis->Pack = heap_malloc(IntBuffSize)) == NULL)
     while(1);
   
-  cthis->CircBuffRx = CircBuff_ctor(IntBuffSize,CircDeep);
+  if(CircDeep > 1)
+  {
+    cthis->CircBuffRx = CircBuff_ctor(IntBuffSize,CircDeep);
   
-  if(cthis->CircBuffRx == NULL)
-  {
-    CircBuff_dctor(cthis->CircBuffRx);
-    Interface_dtor(cthis);  
-    return NULL;
+    if(cthis->CircBuffRx == NULL)
+    {
+      CircBuff_dctor(cthis->CircBuffRx);
+      Interface_dtor(cthis);  
+      return NULL;
+    }
+
+    cthis->CircBuffTx = CircBuff_ctor(IntBuffSize,CircDeep);
+
+    if(cthis->CircBuffTx == NULL)
+    {
+      CircBuff_dctor(cthis->CircBuffTx);
+      Interface_dtor(cthis);  
+      return NULL;
+    }
   }
-
-  cthis->CircBuffTx = CircBuff_ctor(IntBuffSize,CircDeep);
-
-  if(cthis->CircBuffTx == NULL)
+  else 
   {
-    CircBuff_dctor(cthis->CircBuffTx);
-    Interface_dtor(cthis);  
-    return NULL;
+    cthis->CircBuffRx = cthis->CircBuffTx =NULL;
   }
 
   cthis->irqmode = kInterfaceRxTx_process;
@@ -145,16 +158,15 @@ InterfaceHandel_t*  Interface_ctor(HWInterface_t* HwInter,size_t IntBuffSize,siz
   memset(cthis->TxBuff,0,IntBuffSize);
   cthis->Tx_len = 0;
   
-  memset(&cthis->parentCB,NULL,sizeof(cthis->parentCB));
-  memset(&cthis->hwCB,NULL,sizeof(cthis->hwCB));
+  memset(&cthis->parentCB,0,sizeof(cthis->parentCB));
+  memset(&cthis->hwCB,0,sizeof(cthis->hwCB));
 
   HwSetRxBuff(HwInter,cthis->RxBuff,IntBuffSize);
   HwSetTxBuff(HwInter,cthis->TxBuff,IntBuffSize);
 
-  cthis->AlgoritmPack = cthis->AlgoritmUnpuck = _this_TimeProtocol;
+  cthis->AlgoritmPack = cthis->AlgoritmUnpuck = NULL;
 
   cthis->cFilter = NULL;
-
   cthis->cCRC = NULL;
 
   return cthis;
@@ -194,9 +206,9 @@ void   Interface_SetMode(InterfaceHandel_t* cthis,const eInterfaceRxTxHandel_t m
                                 cthis->hwCB.err_cb = _this_err_irq;
                                 HwSetCB(cthis->HwInter,&cthis->hwCB);
                                 break;
+  case kInterfaceRxTx_Os:       cthis->irqmode = mode;
+                                break;
 
-  default:
-    break;
   }
 }
 
@@ -222,7 +234,7 @@ void Interface_InstallProtoAlgoritm(InterfaceHandel_t* cthis,AlgoProto pack, Alg
     ||(pack   == NULL)
     ||(unpack == NULL)
     )
-  return;
+    return;
 
   cthis->AlgoritmPack = pack;
   cthis->AlgoritmUnpuck = unpack;
@@ -296,16 +308,17 @@ static void _this_rx_irq(void* cthis,uint8_t* src,size_t len)
 {
   if(cthis == NULL) 
     return;
-  
-  uint8_t   pack[sizeof(INTERFACE_CAST(cthis)->RxBuff)];
-  size_t    pack_leng = 0;
-  if((pack_leng = _this_rx_parser(cthis,pack,src,len)) == 0)
+
+  if((CAST_INTERFACE(cthis)->LastLeng = _this_rx_parser(cthis,src,len)) == 0)
     return; /* No valid data*/
     
-  if(INTERFACE_CAST(cthis)->parentCB.RxCb != NULL)
-    INTERFACE_CAST(cthis)->parentCB.RxCb(INTERFACE_CAST(cthis)->parentCB.parent,INTERFACE_CAST(cthis),pack,pack_leng);
+  if(CAST_INTERFACE(cthis)->parentCB.RxCb != NULL)
+    CAST_INTERFACE(cthis)->parentCB.RxCb(CAST_INTERFACE(cthis)->parentCB.parent,CAST_INTERFACE(cthis),CAST_INTERFACE(cthis)->CurData,CAST_INTERFACE(cthis)->LastLeng);
   else
-    CircBuff_push(INTERFACE_CAST(cthis)->CircBuffRx,pack,pack_leng);
+  {
+    if(CAST_INTERFACE(cthis)->CircBuffRx)
+      CircBuff_push(CAST_INTERFACE(cthis)->CircBuffRx,CAST_INTERFACE(cthis)->CurData,CAST_INTERFACE(cthis)->LastLeng);
+  }
 }
 
 
@@ -313,26 +326,32 @@ static void _this_rx_irq(void* cthis,uint8_t* src,size_t len)
  * @brief Interface data parser
  * 
  * @param[in]   this pointer to @ref InterfaceHandel_t 
- * @param[out]  dst parsered data
  * @param[in]   src data  
  * @param[in]   len data leng
  * @return      size_t parsed data leng
  */
-static size_t _this_rx_parser(InterfaceHandel_t* cthis,uint8_t* dst,const uint8_t* src,size_t len)
+static size_t _this_rx_parser(InterfaceHandel_t* cthis,uint8_t* src,size_t len)
 {
   size_t pack_leng = 0;
-  if((pack_leng = cthis->AlgoritmUnpuck(dst,src,len)) == 0)
-    return 0;
+  
+  if(cthis->AlgoritmUnpuck)
+  {
+    if((pack_leng = cthis->AlgoritmUnpuck(cthis->Pack,src,len)) == 0)
+      return 0;
+    cthis->CurData = cthis->Pack;
+  }
+  else
+    cthis->CurData = src;
   
   if(cthis->cFilter != NULL)
-    if(!cthis->cFilter->func(cthis->cFilter->parent,dst,len))
+    if(!cthis->cFilter->func(cthis->cFilter->parent,cthis->CurData,len))
       return 0;    
     
   if(cthis->cCRC != NULL)
   {
     if(pack_leng<=CRC_GetSize(cthis->cCRC))
       return 0;
-    if(!_this_CRCcheck(cthis,dst,len))
+    if(!_this_CRCcheck(cthis,cthis->CurData,len))
       return 0;
     else 
       pack_leng-=CRC_GetSize(cthis->cCRC);
@@ -366,15 +385,7 @@ bool  _this_CRCcheck(const InterfaceHandel_t* cthis,const uint8_t* pack,const ui
     return true;
 }
 
-/**
- * @brief  Send data via @ref InterfaceHandel_t
- * 
- * @param hdev     
- * @param payload 
- * @param leng 
- * @return true 
- * @return false 
- */
+
 
 /**
  * @brief Send data via @ref InterfaceHandel_t
@@ -393,17 +404,31 @@ bool Interface_SendData(InterfaceHandel_t* cthis,void *payload,size_t leng)
       return false;
     _this_InsertCRC(cthis,payload,&leng);
   }
+  uint8_t* cur_data = NULL;
   
-  cthis->Tx_len = cthis->AlgoritmPack(cthis->TxBuff,(uint8_t*)payload,leng);
+  if(cthis->AlgoritmPack)
+  {
+    cthis->Tx_len = cthis->AlgoritmPack(cthis->TxBuff,(uint8_t*)payload,leng);
+    cur_data = cthis->TxBuff;
+  }
+  else  
+  {  
+    cthis->Tx_len = leng;
+    cur_data = payload;
+  }
+
 
   if(cthis->Tx_len == 0) return false;
   
   bool state = false;
 
-  if(HwSendData(cthis->HwInter,cthis->TxBuff,cthis->Tx_len)) 
+  if(HwSendData(cthis->HwInter,cur_data,cthis->Tx_len)) 
     return true;
   else 
   {
+    if(!cthis->CircBuffTx)
+      return false;
+
     if(cthis->irqmode == kInterfaceRxTx_irq)
     {  
       HwEnterCriticalTx(cthis->HwInter);
@@ -426,7 +451,7 @@ bool Interface_SendData(InterfaceHandel_t* cthis,void *payload,size_t leng)
  */
 static void _this_tx_irq(void* this_ptr)
 {
-  InterfaceHandel_t* cthis = INTERFACE_CAST(this_ptr);
+  InterfaceHandel_t* cthis = CAST_INTERFACE(this_ptr);
   
   if(CircBuff_pop(cthis->CircBuffTx,cthis->TxBuff,&cthis->Tx_len))
     HwSendData(cthis->HwInter,cthis->TxBuff,cthis->Tx_len);
@@ -456,23 +481,33 @@ static void _this_InsertCRC(const InterfaceHandel_t* cthis,uint8_t* src,size_t* 
  */
 size_t Interface_readData(InterfaceHandel_t* cthis,void *dst)
 {
-  if(CircBuff_IsFree(cthis->CircBuffRx))
-    return 0;
-  
-  size_t leng = 0;
-
-  if(cthis->irqmode == kInterfaceRxTx_irq)
+  if(cthis->CircBuffRx)
   {
-    HwEnterCriticalRx(cthis->HwInter);
+    if(CircBuff_IsFree(cthis->CircBuffRx))
+      return 0;
+    
+    size_t leng = 0;
 
-    CircBuff_pop(cthis->CircBuffRx,dst,&leng);
+    if(cthis->irqmode == kInterfaceRxTx_irq)
+    {
+      HwEnterCriticalRx(cthis->HwInter);
 
-    HwExitCriticalRx(cthis->HwInter);
+      CircBuff_pop(cthis->CircBuffRx,dst,&leng);
+
+      HwExitCriticalRx(cthis->HwInter);
+    }
+    else
+      CircBuff_pop(cthis->CircBuffRx,dst,&leng);
+
+    return leng;
   }
-  else
-    CircBuff_pop(cthis->CircBuffRx,dst,&leng);
-  
-  return leng;
+  else 
+  { 
+    __auto_type ret = cthis->LastLeng;
+    cthis->LastLeng = 0;
+
+    return ret;
+  }
 }
 /**
  * @brief Check is Interface cmd buffer not empty
@@ -483,7 +518,10 @@ size_t Interface_readData(InterfaceHandel_t* cthis,void *dst)
  */
 bool  Interface_isRxNe(InterfaceHandel_t* cthis)
 {
-  return !CircBuff_IsFree(cthis->CircBuffRx);
+  if(cthis->CircBuffRx)
+    return !CircBuff_IsFree(cthis->CircBuffRx);
+  else
+    return cthis->LastLeng;
 }
 
 /**
@@ -520,9 +558,13 @@ void Interface_process(InterfaceHandel_t* cthis)
 {
   if(cthis->irqmode == kInterfaceRxTx_irq)
     return; /* should not be use in irq mode*/
-  
-  _this_CmdTxUploadProc(cthis);
+  if(cthis->irqmode == kInterfaceRxTx_Os)
+  {
+    HwProcess(cthis);
+  }
   _this_CmdRxUploadProc(cthis);
+  _this_CmdTxUploadProc(cthis);
+  
 }
 
 /**
@@ -534,15 +576,14 @@ static void _this_CmdRxUploadProc(InterfaceHandel_t* cthis)
 {
   if(HwReadRxBuff(cthis->HwInter,cthis->RxBuff,&cthis->Rx_len,cthis->RxBuffLen))
   {
-    uint32_t  pack_leng = 0;
-    
-
     if(cthis->Rx_len > cthis->RxBuffLen)
       while(1);
 
-    if((pack_leng = _this_rx_parser(cthis,cthis->Pack,cthis->RxBuff,cthis->Rx_len)) == 0)
+    if((cthis->LastLeng = _this_rx_parser(cthis,cthis->RxBuff,cthis->Rx_len)) == 0)
       return; /* No valid data*/       
-    CircBuff_push(cthis->CircBuffRx,cthis->Pack,pack_leng);
+    
+    if(cthis->CircBuffRx)
+      CircBuff_push(cthis->CircBuffRx,cthis->Pack,cthis->LastLeng);
   }
 }
 
@@ -553,6 +594,9 @@ static void _this_CmdRxUploadProc(InterfaceHandel_t* cthis)
  */
 static void _this_CmdTxUploadProc(InterfaceHandel_t* cthis)
 {
+  if(!cthis->CircBuffTx)
+    return;
+  
   if(CircBuff_IsFree(cthis->CircBuffTx)) 
     return;
   

@@ -23,7 +23,7 @@ extern "C"{
 
 
 #include "../Interface/InterfacePrivate.h"
-#include "../Interface/CRC/CRCInterface.h"
+#include "CRCInterface.h"
 
 /**
  * @addtogroup Wyrm_Drivers Wyrm Drivers
@@ -41,7 +41,6 @@ extern "C"{
  * @todo     should be move to cfg file
  * @{
  */
-#define ADDR_IN_PACK
 #define make_interface(parent,IntBuffSize,CircDeep) Interface_ctor((HWInterface_t*)parent,IntBuffSize,CircDeep)
 #define INTERFACE_HEAD_SIZE sizeof(InterfaceCmdDataHead_t)
 /** @}*/
@@ -59,6 +58,7 @@ typedef enum
   kInterfaceRxTx_process, /*!<  Check DRDY flag from Rx HW and check 
                                 is circbuff empty for tx in none process*/
   kInterfaceRxTx_irq,     /*!<  Rx HW calling the interface handler directly in IRQ (for fast response) */
+  kInterfaceRxTx_Os,
 }eInterfaceRxTxHandel_t;
 
 /**
@@ -162,6 +162,7 @@ typedef struct
   bool                Interface_Connect(InterfaceHandel_t* cthis);
   bool                Interface_Disconnect(InterfaceHandel_t* cthis);
   bool                Interface_IsTxFree(InterfaceHandel_t* cthis);
+  bool                Interface_isRxNe(InterfaceHandel_t* cthis);
   
   size_t              Interface_GetMaxDatalng(InterfaceHandel_t* cthis);
   /** @}*/

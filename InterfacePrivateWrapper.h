@@ -273,7 +273,7 @@ static void HwSetCB(void* this_ptr,sInterfaceIrqCallback_t* p_cb)
  * @return true    if free
  * @return false   buse
  */
-#define HwIsFree(this_ptr) ((HWInterface_t*)(this_ptr))->vtable->IsFree(this_ptr)
+#define HwIsFree(this_ptr) CONVERT_TO_HW(this_ptr)->vtable->IsFree(this_ptr)
 
 
 /**

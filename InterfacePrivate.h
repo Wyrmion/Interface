@@ -50,9 +50,9 @@ typedef enum
 typedef struct 
 {
   void* parent;
-  void (*rx_cb) (void*/*parent*/,uint8_t* /*data*/,size_t /*len*/); /*!< Rx callback function (if you should answer in callback)*/
-  void (*tx_cb) (void*/*parent*/); /*!< Tx callback function (if you should answer in callback)*/
-  void (*err_cb)(void*/*parent*/); /*!< Error callback function*/
+  void (*rx_cb) (void* /*parent*/,uint8_t* /*data*/,size_t /*len*/); /*!< Rx callback function (if you should answer in callback)*/
+  void (*tx_cb) (void* /*parent*/); /*!< Tx callback function (if you should answer in callback)*/
+  void (*err_cb)(void* /*parent*/); /*!< Error callback function*/
 }sInterfaceIrqCallback_t;    
 
 /**
@@ -69,10 +69,10 @@ typedef struct {
     void    (*EnterCriticalTx)(void* /*this*/);
     void    (*ExitCriticalTx)(void* /*this*/);
 
-    bool    (*Connect)(void*/*this*/);                                                          /*!< Connect */
-    bool    (*Disconnect)(void*/*this*/);                                                       /*!< Disconnect */
+    bool    (*Connect)(void* /*this*/);                                                          /*!< Connect */
+    bool    (*Disconnect)(void */*this*/);                                                       /*!< Disconnect */
     
-    void    (*Process)(void*/*this*/);                                                          /*!< None blocking while(if needed)*/
+    void    (*Process)(void */*this*/);                                                          /*!< None blocking while(if needed)*/
         
     bool    (*IsFree)(void* /*this*/);                                                          /*!< Get interface state*/
     bool    (*SendData)(void* /*this*/,uint8_t* /*data*/,size_t /*len*/);                      /*!< Send data */
