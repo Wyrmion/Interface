@@ -3,8 +3,8 @@
  * @file     Interface.c
  * @author   Wyrm
  * @brief    This code is designed to work with various kinds of interfaces. It is a parent class
- * @version  V1.7.0
- * @date     02 Feb. 2026.
+ * @version  V1.7.1
+ * @date     04 Feb. 2026.
  *************************************************************************
  */
 /*
@@ -341,7 +341,10 @@ static size_t _this_rx_parser(InterfaceHandel_t* cthis,uint8_t* src,size_t len)
     cthis->CurData = cthis->Pack;
   }
   else
+  {
+    pack_leng = len;
     cthis->CurData = src;
+  }
   
   if(cthis->cFilter != NULL)
     if(!cthis->cFilter->func(cthis->cFilter->parent,cthis->CurData,len))
@@ -479,7 +482,7 @@ static void _this_InsertCRC(const InterfaceHandel_t* cthis,uint8_t* src,size_t* 
  * @param dst  pointer to output data
  * @return size_t size of output data
  */
-size_t Interface_readData(InterfaceHandel_t* cthis,void *dst)
+size_t Interface_readData(InterfaceHandel_t* cthis,void* dst)
 {
   if(cthis->CircBuffRx)
   {
@@ -503,10 +506,16 @@ size_t Interface_readData(InterfaceHandel_t* cthis,void *dst)
   }
   else 
   { 
-    __auto_type ret = cthis->LastLeng;
-    cthis->LastLeng = 0;
-
-    return ret;
+    if(cthis->LastLeng)
+    {
+      __auto_type ret = cthis->LastLeng;
+      cthis->LastLeng = 0;
+      memcpy(dst,cthis->RxBuff,ret);      
+      return ret;
+    }
+    else
+      return 0;
+    
   }
 }
 /**
