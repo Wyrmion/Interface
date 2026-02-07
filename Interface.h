@@ -3,8 +3,8 @@
   * @file    Interface.h
   * @author  Kukushkin A.V.
   * @brief   header file for Interface.c
-  * @version  V1.0.2
-  * @date     10. Jan. 2025
+  * @version  V1.0.3
+  * @date     07. Feb. 2026
   ******************************************************************************
   */ 
 
@@ -58,7 +58,6 @@ typedef enum
   kInterfaceRxTx_process, /*!<  Check DRDY flag from Rx HW and check 
                                 is circbuff empty for tx in none process*/
   kInterfaceRxTx_irq,     /*!<  Rx HW calling the interface handler directly in IRQ (for fast response) */
-  kInterfaceRxTx_Os,
 }eInterfaceRxTxHandel_t;
 
 /**
@@ -157,6 +156,7 @@ typedef struct
   */
   void                Interface_SetMode(InterfaceHandel_t* cthis,const eInterfaceRxTxHandel_t mode);
   size_t              Interface_readData(InterfaceHandel_t* cthis,void *dst);
+  size_t              Interface_readDataPtr(InterfaceHandel_t* cthis,uint8_t** dst);
   bool                Interface_SendData(InterfaceHandel_t* cthis,void *src,size_t leng);
 
   bool                Interface_Connect(InterfaceHandel_t* cthis);

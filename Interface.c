@@ -3,8 +3,8 @@
  * @file     Interface.c
  * @author   Wyrm
  * @brief    This code is designed to work with various kinds of interfaces. It is a parent class
- * @version  V1.7.1
- * @date     04 Feb. 2026.
+ * @version  V1.7.2
+ * @date     06 Feb. 2026.
  *************************************************************************
  */
 /*
@@ -205,8 +205,6 @@ void   Interface_SetMode(InterfaceHandel_t* cthis,const eInterfaceRxTxHandel_t m
                                 cthis->hwCB.tx_cb  = _this_tx_irq;
                                 cthis->hwCB.err_cb = _this_err_irq;
                                 HwSetCB(cthis->HwInter,&cthis->hwCB);
-                                break;
-  case kInterfaceRxTx_Os:       cthis->irqmode = mode;
                                 break;
 
   }
@@ -515,9 +513,35 @@ size_t Interface_readData(InterfaceHandel_t* cthis,void* dst)
     }
     else
       return 0;
-    
   }
 }
+
+/**
+ * @brief Get data buffer ptr
+ * 
+ * @param cthis this pointer to @ref InterfaceHandel_t  
+ * @param dst  pointer to data pointer
+ * @return size_t size of output data
+ */
+size_t  Interface_readDataPtr(InterfaceHandel_t* cthis,uint8_t** dst)
+{
+  if(cthis->CircBuffRx)
+    return 0;
+  
+  else 
+  { 
+    if(cthis->LastLeng)
+    {
+      __auto_type ret = cthis->LastLeng;
+      cthis->LastLeng = 0;
+      (*dst) = cthis->RxBuff;
+      return ret;
+    }
+    else
+      return 0;
+  }
+}
+
 /**
  * @brief Check is Interface cmd buffer not empty
  * 
@@ -567,10 +591,7 @@ void Interface_process(InterfaceHandel_t* cthis)
 {
   if(cthis->irqmode == kInterfaceRxTx_irq)
     return; /* should not be use in irq mode*/
-  if(cthis->irqmode == kInterfaceRxTx_Os)
-  {
-    HwProcess(cthis);
-  }
+
   _this_CmdRxUploadProc(cthis);
   _this_CmdTxUploadProc(cthis);
   
