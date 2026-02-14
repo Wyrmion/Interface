@@ -3,8 +3,8 @@
  * @file     Interface.c
  * @author   Wyrm
  * @brief    This code is designed to work with various kinds of interfaces. It is a parent class
- * @version  V1.7.2
- * @date     06 Feb. 2026.
+ * @version  V1.7.3
+ * @date     14 Feb. 2026.
  *************************************************************************
  */
 /*
@@ -345,14 +345,14 @@ static size_t _this_rx_parser(InterfaceHandel_t* cthis,uint8_t* src,size_t len)
   }
   
   if(cthis->cFilter != NULL)
-    if(!cthis->cFilter->func(cthis->cFilter->parent,cthis->CurData,len))
+    if(!cthis->cFilter->func(cthis->cFilter->parent,cthis->CurData,pack_leng))
       return 0;    
     
   if(cthis->cCRC != NULL)
   {
     if(pack_leng<=CRC_GetSize(cthis->cCRC))
       return 0;
-    if(!_this_CRCcheck(cthis,cthis->CurData,len))
+    if(!_this_CRCcheck(cthis,cthis->CurData,pack_leng))
       return 0;
     else 
       pack_leng-=CRC_GetSize(cthis->cCRC);
