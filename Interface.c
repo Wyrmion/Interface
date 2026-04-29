@@ -4,11 +4,8 @@
  * @author   Wyrm
  * @brief    This code is designed to work with various kinds of interfaces. It is a parent class
  * @version  V1.7.4
-<<<<<<< HEAD
  * @date     29 Apr. 2026.
-=======
- * @date     14 Feb. 2026.
->>>>>>> f0056d5f143fa29a5b53e4c9523b051454f1b52a
+
  *************************************************************************
  */
 /*
@@ -562,7 +559,7 @@ size_t  Interface_readDataPtr(InterfaceHandel_t* cthis,uint8_t** dst)
     {
       __auto_type ret = cthis->LastLeng;
       cthis->LastLeng = 0;
-      (*dst) = cthis->CurData;
+      (*dst) = cthis->RxBuff;
       return ret;
     }
     else
