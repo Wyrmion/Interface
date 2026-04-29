@@ -1,10 +1,10 @@
 /**
  ****************************************************************************
  * @file     InterfacePrivateWrapper.h
- * @author   Kukushkin A.V.
+ * @author   Wyrm
  * @brief    This file provides code for @ref HWInterface_t wrapper macro/functions
- * @version  V1.0.0
- * @date     30. Jan. 2024
+ * @version  V1.0.1
+ * @date     29. Apr. 2026
  *************************************************************************
  */
  
@@ -51,7 +51,7 @@ extern "C"{
   static void HwSetRxBuff(void* this_ptr,uint8_t* data,size_t max_len);
   static void HwSetTxBuff(void* this_ptr,uint8_t* data,size_t max_len);
   static void HwProcess(void* this_ptr);
-  static bool HwSendData(void* this_ptr,uint8_t* data,uint8_t len);
+  static bool HwSendData(void* this_ptr,const uint8_t* data,uint8_t len);
   static bool HwIsFree(void* this_ptr);
   static bool HwConnect(void* this_ptr);
   static bool HwDisconnect(void* this_ptr);

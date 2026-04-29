@@ -3,8 +3,8 @@
  * @file     Interface.c
  * @author   Wyrm
  * @brief    This code is designed to work with various kinds of interfaces. It is a parent class
- * @version  V1.7.3
- * @date     14 Feb. 2026.
+ * @version  V1.7.4
+ * @date     29 Apr. 2026.
  *************************************************************************
  */
 /*
@@ -58,6 +58,7 @@
   static size_t _this_rx_parser(InterfaceHandel_t* cthis,uint8_t* src,size_t len);
   static void   _this_CmdRxUploadProc(InterfaceHandel_t* cthis);
   static void   _this_CmdTxUploadProc(InterfaceHandel_t* cthis);
+  
 /** @}*/ /* Interfafce Private Functions */
 
 /**
@@ -97,6 +98,8 @@ struct InterfaceHandel
   HWInterface_t*  HwInter;              /*!< pointer to @ref HWInterface_t*/
   sInterfaceIrqCallback_t hwCB;         /*!< pointer to @ref sInterfaceIrqCallback_t callback from hardware to interface*/
   sInterfaceIrqParentCB_t parentCB;     /*!< pointer to @ref sInterfaceIrqParentCB_t callback from interface to parent*/
+
+  bool                    RawMode;
 };
 
 
@@ -210,6 +213,16 @@ void   Interface_SetMode(InterfaceHandel_t* cthis,const eInterfaceRxTxHandel_t m
   }
 }
 
+/**
+ * @brief Set Raw Data mode
+ * @note  this mode ignoring packet frame algoritm,crc algoritm,rx filter on data send/recive
+ *        you can use Send generic..  
+ * @param cthis pointer to @ref InterfaceHandel
+ * @param state for raw mode state
+ */
+void  Interface_SetRawMode(InterfaceHandel_t* cthis,bool state) {cthis->RawMode = state;}
+
+bool  Interface_isRawMode(InterfaceHandel_t* cthis) {return cthis->RawMode;}
 /**
  * @brief Get Interface max data length
  * 
@@ -397,33 +410,40 @@ bool  _this_CRCcheck(const InterfaceHandel_t* cthis,const uint8_t* pack,const ui
  * @return true 
  * @return false 
  */
-bool Interface_SendData(InterfaceHandel_t* cthis,void *payload,size_t leng)
+bool Interface_SendData(InterfaceHandel_t* cthis,void *payload, size_t leng)
 { 
-  if(cthis->cCRC != NULL) 
+
+  if( cthis->cCRC != NULL && !cthis->RawMode)
   {
     if(leng+CRC_GetSize(cthis->cCRC)>cthis->TxBuffLen)
       return false;
     _this_InsertCRC(cthis,payload,&leng);
   }
+  
   uint8_t* cur_data = NULL;
   
-  if(cthis->AlgoritmPack)
+  if(cthis->AlgoritmPack && !cthis->RawMode)
   {
     cthis->Tx_len = cthis->AlgoritmPack(cthis->TxBuff,(uint8_t*)payload,leng);
     cur_data = cthis->TxBuff;
   }
   else  
-  {  
-    cthis->Tx_len = leng;
     cur_data = payload;
-  }
 
+  return Interface_Send_cu8(cthis,cur_data,leng);
+}
 
-  if(cthis->Tx_len == 0) return false;
-  
+inline bool   Interface_Send_cu8(InterfaceHandel_t* cthis,const uint8_t* data,size_t leng)
+{
+
+  if(leng == 0)
+    return false;
+
+  cthis->Tx_len = leng;  
+
   bool state = false;
 
-  if(HwSendData(cthis->HwInter,cur_data,cthis->Tx_len)) 
+  if(HwSendData(cthis->HwInter,data,cthis->Tx_len)) 
     return true;
   else 
   {
@@ -443,6 +463,10 @@ bool Interface_SendData(InterfaceHandel_t* cthis,void *payload,size_t leng)
   }
   return state;
 }
+
+
+bool Interface_Send_str(InterfaceHandel_t* cthis,const char* str,size_t leng) {return Interface_Send_cu8(cthis,(const uint8_t*)str,leng);}
+
 
 /**
  * @brief Interface tx Function for directly run in an interrupt 
@@ -608,12 +632,21 @@ static void _this_CmdRxUploadProc(InterfaceHandel_t* cthis)
   {
     if(cthis->Rx_len > cthis->RxBuffLen)
       while(1);
-
-    if((cthis->LastLeng = _this_rx_parser(cthis,cthis->RxBuff,cthis->Rx_len)) == 0)
-      return; /* No valid data*/       
     
-    if(cthis->CircBuffRx)
-      CircBuff_push(cthis->CircBuffRx,cthis->Pack,cthis->LastLeng);
+    if(!cthis->RawMode)
+    {
+      if((cthis->LastLeng = _this_rx_parser(cthis,cthis->RxBuff,cthis->Rx_len)) == 0)
+        return; /* No valid data*/       
+      if(cthis->CircBuffRx)
+        CircBuff_push(cthis->CircBuffRx,cthis->Pack,cthis->LastLeng);
+    }
+    else
+    {
+      cthis->LastLeng = cthis->Rx_len;
+      CircBuff_push(cthis->CircBuffRx,cthis->RxBuff,cthis->LastLeng);
+    }
+    
+    
   }
 }
 

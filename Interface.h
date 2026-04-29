@@ -3,8 +3,8 @@
   * @file    Interface.h
   * @author  Kukushkin A.V.
   * @brief   header file for Interface.c
-  * @version  V1.0.3
-  * @date     07. Feb. 2026
+  * @version  V1.0.4
+  * @date     29. Apr. 2026
   ******************************************************************************
   */ 
 
@@ -155,9 +155,22 @@ typedef struct
   * @{
   */
   void                Interface_SetMode(InterfaceHandel_t* cthis,const eInterfaceRxTxHandel_t mode);
+
+  void                Interface_SetRawMode(InterfaceHandel_t* cthis,bool state);
+  bool                Interface_isRawMode(InterfaceHandel_t* cthis);
+
   size_t              Interface_readData(InterfaceHandel_t* cthis,void *dst);
   size_t              Interface_readDataPtr(InterfaceHandel_t* cthis,uint8_t** dst);
-  bool                Interface_SendData(InterfaceHandel_t* cthis,void *src,size_t leng);
+
+  bool                Interface_SendData(InterfaceHandel_t* cthis,void *payload,size_t leng);
+  bool                Interface_Send_cu8(InterfaceHandel_t* cthis,const uint8_t* data,size_t leng);
+  bool                Interface_Send_str(InterfaceHandel_t* cthis,const char* str,size_t leng); 
+  
+
+  
+
+
+
 
   bool                Interface_Connect(InterfaceHandel_t* cthis);
   bool                Interface_Disconnect(InterfaceHandel_t* cthis);
@@ -165,13 +178,31 @@ typedef struct
   bool                Interface_isRxNe(InterfaceHandel_t* cthis);
   
   size_t              Interface_GetMaxDatalng(InterfaceHandel_t* cthis);
-  /** @}*/
+
+  
+  /** @}*/ 
 /** @}*/
 
 /** @}*/
 /** @}*/
 #ifdef __cplusplus
-}
+} 
+
+inline bool Interface_Send(InterfaceHandel_t* p, void* d, size_t s)          { return Interface_SendData(p, d, s); }
+inline bool Interface_Send(InterfaceHandel_t* p, const uint8_t* d, size_t s) { return Interface_Send_cu8(p, d, s); }
+inline bool Interface_Send(InterfaceHandel_t* p, uint8_t* d, size_t s)       { return Interface_Send_cu8(p, d, s); }
+inline bool Interface_Send(InterfaceHandel_t* p, const char* d, size_t s)    { return Interface_Send_str(p, d, s); }
+inline bool Interface_Send(InterfaceHandel_t* p, char* d, size_t s)          { return Interface_Send_str(p, d, s); }
+#else
+
+#define Interface_Send(parent, src, size) _Generic((src), \
+    const uint8_t*: Interface_Send_cu8, \
+    uint8_t*:       Interface_Send_cu8, \
+    const char*:    Interface_Send_str, \
+    char*:          Interface_Send_str, \
+    default:        Interface_SendData  \
+)(parent, src, size)
 #endif
+
 
 #endif
